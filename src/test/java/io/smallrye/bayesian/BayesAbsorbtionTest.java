@@ -1,0 +1,203 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package io.smallrye.bayesian;
+
+import io.smallrye.bayesian.graph.Graph;
+import io.smallrye.bayesian.graph.GraphNode;
+import org.junit.jupiter.api.Test;
+
+import java.util.Arrays;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static io.smallrye.bayesian.GraphTest.addNode;
+import static io.smallrye.bayesian.GraphTest.bitSet;
+import static io.smallrye.bayesian.JunctionTreeTest.scaleDouble;
+
+
+public class BayesAbsorbtionTest {
+
+    @Test
+    public void testDivide1() {
+        double[] newD = new double[] { 10, 8, 4 };
+        double[] oldD = new double[] { 2, 4, 1 };
+        double[] r = BayesAbsorption.dividePotentials(newD, oldD);
+
+        assertThat(scaleDouble(3, r)).containsExactly(5, 2, 4);
+    }
+
+    @Test
+    public void testDivide2() {
+        double[] newD = new double[] { 0.5, 1.0, 1.5, 2.0 };
+        double[] oldD = new double[] { 0.1, 0.2, 0.3, 0.4 };
+        double[] r = BayesAbsorption.dividePotentials(newD, oldD);
+
+        assertThat(scaleDouble(3, r)).containsExactly(5.0, 5.0, 5.0, 5.0);
+    }
+
+    @Test
+    public void testAbsorption1() {
+        // Absorbs into node1 into sep. A and B are in node1. A and B are in the sep.
+        // this is a straight forward projection
+        BayesVariable a = new BayesVariable<String>( "A", 0, new String[] {"A1", "A2"}, null);
+        BayesVariable b = new BayesVariable<String>( "B", 1, new String[] {"B1", "B2"}, null);
+
+        Graph<BayesVariable> graph = new BayesNetwork();
+        GraphNode x0 = addNode(graph);
+        GraphNode x1 = addNode(graph);
+
+        x0.setContent( a );
+        x1.setContent( b );
+
+
+        JunctionTreeClique node1 = new JunctionTreeClique(0, graph, bitSet("0011") );
+        JunctionTreeClique node2 = new JunctionTreeClique(1, graph, bitSet("0011")  );
+        SeparatorState sep = new JunctionTreeSeparator(0, node1, node2, bitSet("0011"), graph).createState();
+
+        BayesVariable[] vars = new BayesVariable[] {a, b};
+
+        BayesVariable[] sepVars = new BayesVariable[] { a, b };
+        int[] sepVarPos = PotentialMultiplier.createSubsetVarPos(vars, sepVars);
+
+        int sepVarNumberOfStates = PotentialMultiplier.createNumberOfStates(sepVars);
+        int[] sepVarMultipliers = PotentialMultiplier.createIndexMultipliers(sepVars, sepVarNumberOfStates);
+
+        double v = 0.44;
+        for ( int i = 0; i < node1.getPotentials().length; i++ ) {
+            node1.getPotentials()[i] = v;
+            v += + 0.4;
+        }
+
+        double[] oldSepPotentials = new double[ sep.getPotentials().length];
+        Arrays.fill( oldSepPotentials, 0.2);
+
+        v = 0.5;
+        for ( int i = 0; i < sep.getPotentials().length; i++ ) {
+            sep.getPotentials()[i] = v;
+            v += + 0.5;
+        }
+
+        BayesAbsorption p = new BayesAbsorption(sepVarPos, oldSepPotentials, sep.getPotentials(), sepVarMultipliers, vars, node1.getPotentials());
+        p.absorb();
+
+        assertThat(scaleDouble(3, node1.getPotentials())).containsExactly(0.035, 0.135, 0.3, 0.529);
+    }
+
+    @Test
+    public void testAbsorption2() {
+        // Absorbs into node1 into sep. A, B and C are in node1. A and B are in the sep.
+        // this tests a non separator var, after the vars
+        BayesVariable a = new BayesVariable<String>( "A", 0, new String[] {"A1", "A2"}, null);
+        BayesVariable b = new BayesVariable<String>( "B", 1, new String[] {"B1", "B2"}, null);
+        BayesVariable c = new BayesVariable<String>( "C", 2, new String[] {"C1", "C2"}, null);
+
+        Graph<BayesVariable> graph = new BayesNetwork();
+        GraphNode x0 = addNode(graph);
+        GraphNode x1 = addNode(graph);
+        GraphNode x2 = addNode(graph);
+
+        x0.setContent( a );
+        x1.setContent( b );
+        x2.setContent( c );
+
+
+        JunctionTreeClique node1 = new JunctionTreeClique(0, graph, bitSet("0111") );
+        JunctionTreeClique node2 = new JunctionTreeClique(1, graph, bitSet("0011")  );
+        SeparatorState sep = new JunctionTreeSeparator(0, node1, node2, bitSet("0011"), graph).createState();
+
+        BayesVariable[] vars = new BayesVariable[] {a, b, c};
+
+        BayesVariable[] sepVars = new BayesVariable[] { a, b };
+        int[] sepVarPos = PotentialMultiplier.createSubsetVarPos(vars, sepVars);
+
+        int sepVarNumberOfStates = PotentialMultiplier.createNumberOfStates(sepVars);
+        int[] sepVarMultipliers = PotentialMultiplier.createIndexMultipliers(sepVars, sepVarNumberOfStates);
+
+        double v = 0.44;
+        for ( int i = 0; i < node1.getPotentials().length; i++ ) {
+            node1.getPotentials()[i] = v;
+            v += + 0.4;
+        }
+
+        double[] oldSepPotentials = new double[ sep.getPotentials().length];
+        Arrays.fill( oldSepPotentials, 0.2);
+
+        v = 0.5;
+        for ( int i = 0; i < sep.getPotentials().length; i++ ) {
+            sep.getPotentials()[i] = v;
+            v += + 0.5;
+        }
+
+        BayesAbsorption p = new BayesAbsorption(sepVarPos, oldSepPotentials, sep.getPotentials(), sepVarMultipliers, vars, node1.getPotentials());
+        p.absorb();
+
+        assertThat(scaleDouble(3, node1.getPotentials())).containsExactly(0.01, 0.019, 0.055, 0.073, 0.137, 0.163, 0.254, 0.289);
+    }
+
+    @Test
+    public void testAbsorption3() {
+        // Projects from node1 into sep. A, B and C are in node1. A and C are in the sep.
+        // this tests a non separator var, in the middle of the vars
+        BayesVariable a = new BayesVariable<String>( "A", 0, new String[] {"A1", "A2"},  null);
+        BayesVariable b = new BayesVariable<String>( "B", 1, new String[] {"B1", "B2"},  null);
+        BayesVariable c = new BayesVariable<String>( "C", 2, new String[] {"C1", "C2"},  null);
+
+
+        Graph<BayesVariable> graph = new BayesNetwork();
+        GraphNode x0 = addNode(graph);
+        GraphNode x1 = addNode(graph);
+        GraphNode x2 = addNode(graph);
+
+
+        x0.setContent( a );
+        x1.setContent( b );
+        x2.setContent( c );
+
+        JunctionTreeClique node1 = new JunctionTreeClique(0, graph, bitSet("0111") );
+        JunctionTreeClique node2 = new JunctionTreeClique(1, graph, bitSet("0101")  );
+        SeparatorState sep = new JunctionTreeSeparator(0, node1, node2, bitSet("0101"), graph).createState();
+
+        BayesVariable[] vars = new BayesVariable[] {a, b, c};
+
+        BayesVariable[] sepVars = new BayesVariable[] { a, c };
+        int[] sepVarPos = PotentialMultiplier.createSubsetVarPos(vars, sepVars);
+
+        int sepVarNumberOfStates = PotentialMultiplier.createNumberOfStates(sepVars);
+        int[] sepVarMultipliers = PotentialMultiplier.createIndexMultipliers(sepVars, sepVarNumberOfStates);
+
+        double v = 0.44;
+        for ( int i = 0; i < node1.getPotentials().length; i++ ) {
+            node1.getPotentials()[i] = v;
+            v += + 0.4;
+        }
+
+        double[] oldSepPotentials = new double[ sep.getPotentials().length];
+        Arrays.fill( oldSepPotentials, 0.2);
+
+        v = 0.5;
+        for ( int i = 0; i < sep.getPotentials().length; i++ ) {
+            sep.getPotentials()[i] = v;
+            v += + 0.5;
+        }
+
+        BayesAbsorption p = new BayesAbsorption(sepVarPos, oldSepPotentials, sep.getPotentials(), sepVarMultipliers, vars, node1.getPotentials());
+        p.absorb();
+
+        assertThat(scaleDouble(3, node1.getPotentials())).containsExactly(0.01, 0.038, 0.028, 0.075, 0.139, 0.222, 0.194, 0.295);
+    }
+}
